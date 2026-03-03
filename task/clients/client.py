@@ -10,26 +10,66 @@ class DialClient(BaseClient):
 
     def __init__(self, deployment_name: str):
         super().__init__(deployment_name)
-        #TODO:
-        # Documentation: https://pypi.org/project/aidial-client/ (here you can find how to create and use these clients)
-        # 1. Create Dial client
-        # 2. Create AsyncDial client
+        # Documentation: https://pypi.org/project/aidial-client/
+        # Synchronous client – used for regular (non‑streaming) calls.
+        self._client = Dial(
+            base_url=DIAL_ENDPOINT,
+            api_key=self._api_key,
+        )
+        # Asynchronous client – used for streaming calls.
+        self._async_client = AsyncDial(
+            base_url=DIAL_ENDPOINT,
+            api_key=self._api_key,
+        )
 
     def get_completion(self, messages: list[Message]) -> Message:
-        #TODO:
-        # 1. Create chat completions with client
-        #    Hint: to unpack messages you can use the `to_dict()` method from Message object
-        # 2. Get content from response, print it and return message with assistant role and content
-        # 3. If choices are not present then raise Exception("No choices in response found")
-        raise NotImplementedError
+        """
+        Send a regular (non‑streaming) request using the aidial-client SDK.
+        """
+        response = self._client.chat.completions.create(
+            deployment_name=self._deployment_name,
+            messages=[msg.to_dict() for msg in messages],
+        )
+
+        choices = getattr(response, "choices", None)
+        if not choices:
+            raise Exception("No choices in response found")
+
+        first_choice = choices[0]
+        message_obj = getattr(first_choice, "message", None)
+        if message_obj is None:
+            raise Exception("No message in first choice found")
+
+        content = getattr(message_obj, "content", "")
+        print(content)
+        return Message(role=Role.AI, content=content)
 
     async def stream_completion(self, messages: list[Message]) -> Message:
-        #TODO:
-        # 1. Create chat completions with async client
-        #    Hint: don't forget to add `stream=True` in call.
-        # 2. Create array with `contents` name (here we will collect all content chunks)
-        # 3. Make async loop from `chunks` (from 1st step)
-        # 4. Print content chunk and collect it contents array
-        # 5. Print empty row `print()` (it will represent the end of streaming and in console we will print input from a new line)
-        # 6. Return Message with assistant role and message collected content
-        raise NotImplementedError
+        """
+        Send a streaming request using the asynchronous aidial-client SDK.
+        """
+        chunks = await self._async_client.chat.completions.create(
+            deployment_name=self._deployment_name,
+            messages=[msg.to_dict() for msg in messages],
+            stream=True,
+        )
+
+        contents: list[str] = []
+
+        async for chunk in chunks:
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+
+            delta = getattr(choices[0], "delta", None)
+            if delta is None:
+                continue
+
+            content_piece = getattr(delta, "content", None)
+            if content_piece:
+                print(content_piece, end="")
+                contents.append(content_piece)
+
+        # Move to the next console line after streaming is finished.
+        print()
+        return Message(role=Role.AI, content="".join(contents))
